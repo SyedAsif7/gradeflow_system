@@ -445,8 +445,12 @@ async def assign_answer_sheet(sheet_id: str, teacher_id: str = Form(...)):
 
 @api_router.put("/answer-sheets/{sheet_id}/grade", response_model=AnswerSheet)
 async def grade_answer_sheet(sheet_id: str, marks_data: MarkSubmission):
+    # Calculate total marks from question-wise marks
+    total_marks = sum(qm.marks_obtained for qm in marks_data.question_marks)
+    
     update_data = {
-        "marks_obtained": marks_data.marks_obtained,
+        "marks_obtained": total_marks,
+        "question_marks": [qm.model_dump() for qm in marks_data.question_marks],
         "remarks": marks_data.remarks,
         "status": "checked",
         "checked_at": datetime.now(timezone.utc).isoformat()
