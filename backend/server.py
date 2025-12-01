@@ -91,6 +91,11 @@ class SubjectCreate(BaseModel):
     name: str
     code: str
 
+class Question(BaseModel):
+    question_number: int
+    question_text: str
+    max_marks: int
+
 class Exam(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -100,6 +105,7 @@ class Exam(BaseModel):
     date: str
     total_marks: int
     class_name: str
+    questions: List[Question] = []
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 class ExamCreate(BaseModel):
@@ -109,6 +115,7 @@ class ExamCreate(BaseModel):
     date: str
     total_marks: int
     class_name: str
+    questions: List[Question] = []
 
 class AnswerSheet(BaseModel):
     model_config = ConfigDict(extra="ignore")
