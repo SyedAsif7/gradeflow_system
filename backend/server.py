@@ -498,6 +498,142 @@ async def get_dashboard_stats():
         "pending_sheets": pending_sheets
     }
 
+# Excel Export
+@api_router.get("/exams/{exam_id}/export-marksheet")
+async def export_marksheet(exam_id: str):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    
+    # Fetch exam details
+    exam = await db.exams.find_one({"id": exam_id}, {"_id": 0})
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    
+    # Fetch subject
+    subject = await db.subjects.find_one({"id": exam["subject_id"]}, {"_id": 0})
+    subject_name = subject["name"] if subject else "Unknown"
+    
+    # Fetch all answer sheets for this exam
+    answer_sheets = await db.answer_sheets.find({"exam_id": exam_id}, {"_id": 0}).to_list(1000)
+    
+    # Fetch all students
+    students_dict = {}
+    students = await db.students.find({}, {"_id": 0}).to_list(1000)
+    for student in students:
+        students_dict[student["id"]] = student
+    
+    # Create workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Marksheet"
+    
+    # Header styling
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=12)
+    
+    # Title
+    ws.merge_cells('A1:F1')
+    title_cell = ws['A1']
+    title_cell.value = f"{exam['name']} - Marksheet"
+    title_cell.font = Font(bold=True, size=14)
+    title_cell.alignment = Alignment(horizontal='center')
+    
+    # Exam details
+    ws['A2'] = f"Subject: {subject_name}"
+    ws['A3'] = f"Exam Type: {exam['exam_type']}"
+    ws['A4'] = f"Date: {exam['date']}"
+    ws['A5'] = f"Class: {exam['class_name']}"
+    ws['A6'] = f"Total Marks: {exam['total_marks']}"
+    
+    # Column headers
+    header_row = 8
+    headers = ['Roll Number', 'Student Name', 'Email', 'Marks Obtained', 'Total Marks', 'Percentage', 'Status']
+    
+    # Add question-wise columns if questions exist
+    questions = exam.get('questions', [])
+    if questions:
+        for q in questions:
+            headers.insert(-3, f"Q{q['question_number']} ({q['max_marks']})")
+    
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=header_row, column=col_num, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+    
+    # Data rows
+    row_num = header_row + 1
+    for sheet in answer_sheets:
+        student = students_dict.get(sheet["student_id"])
+        if not student:
+            continue
+        
+        col = 1
+        ws.cell(row=row_num, column=col, value=student.get("roll_number", "N/A"))
+        col += 1
+        ws.cell(row=row_num, column=col, value=student.get("name", "N/A"))
+        col += 1
+        ws.cell(row=row_num, column=col, value=student.get("email", "N/A"))
+        col += 1
+        
+        # Question-wise marks
+        if questions and sheet.get("question_marks"):
+            question_marks_dict = {qm["question_number"]: qm["marks_obtained"] for qm in sheet["question_marks"]}
+            for q in questions:
+                marks = question_marks_dict.get(q["question_number"], 0)
+                ws.cell(row=row_num, column=col, value=marks)
+                col += 1
+        
+        # Total marks
+        marks_obtained = sheet.get("marks_obtained", 0)
+        ws.cell(row=row_num, column=col, value=marks_obtained if marks_obtained is not None else "Not Graded")
+        col += 1
+        
+        ws.cell(row=row_num, column=col, value=exam["total_marks"])
+        col += 1
+        
+        # Percentage
+        if marks_obtained is not None:
+            percentage = round((marks_obtained / exam["total_marks"]) * 100, 2)
+            ws.cell(row=row_num, column=col, value=f"{percentage}%")
+        else:
+            ws.cell(row=row_num, column=col, value="N/A")
+        col += 1
+        
+        # Status
+        status = "Checked" if sheet["status"] == "checked" else "Pending"
+        ws.cell(row=row_num, column=col, value=status)
+        
+        row_num += 1
+    
+    # Adjust column widths
+    for column in ws.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+    
+    # Save to BytesIO
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename = f"{exam['name'].replace(' ', '_')}_Marksheet.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 # Include the router in the main app
 app.include_router(api_router)
 
