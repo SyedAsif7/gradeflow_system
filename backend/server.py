@@ -117,6 +117,11 @@ class ExamCreate(BaseModel):
     class_name: str
     questions: List[Question] = []
 
+class QuestionMark(BaseModel):
+    question_number: int
+    marks_obtained: int
+    max_marks: int
+
 class AnswerSheet(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -126,12 +131,13 @@ class AnswerSheet(BaseModel):
     assigned_teacher_id: Optional[str] = None
     status: str = "pending"  # pending, checked
     marks_obtained: Optional[int] = None
+    question_marks: List[QuestionMark] = []
     remarks: Optional[str] = None
     checked_at: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 class MarkSubmission(BaseModel):
-    marks_obtained: int
+    question_marks: List[QuestionMark]
     remarks: Optional[str] = None
 
 # Helper functions
