@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API } from '../App';
+import { api } from '../lib/apiClient';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { toast } from 'sonner';
@@ -20,15 +19,15 @@ const StudentDashboard = ({ user, onLogout }) => {
   const fetchData = async () => {
     try {
       const [studentsRes, examsRes, subjectsRes] = await Promise.all([
-        axios.get(`${API}/students`),
-        axios.get(`${API}/exams`),
-        axios.get(`${API}/subjects`),
+        api.get('/students'),
+        api.get('/exams'),
+        api.get('/subjects'),
       ]);
 
       const currentStudent = studentsRes.data.find(s => s.email === user.email);
       if (currentStudent) {
         setStudentData(currentStudent);
-        const sheetsRes = await axios.get(`${API}/answer-sheets?student_id=${currentStudent.id}`);
+        const sheetsRes = await api.get(`/answer-sheets?student_id=${currentStudent.id}`);
         setAnswerSheets(sheetsRes.data);
       }
 

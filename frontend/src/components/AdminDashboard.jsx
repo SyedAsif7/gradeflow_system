@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API } from '../App';
+import { api } from '../lib/apiClient';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -22,7 +21,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get(`${API}/dashboard/stats`);
+      const response = await api.get('/dashboard/stats');
       setStats(response.data);
     } catch (error) {
       toast.error('Failed to fetch dashboard stats');

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API } from '../../App';
+import { api } from '../../lib/apiClient';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -30,8 +29,8 @@ const TeachersManagement = () => {
   const fetchData = async () => {
     try {
       const [teachersRes, subjectsRes] = await Promise.all([
-        axios.get(`${API}/teachers`),
-        axios.get(`${API}/subjects`),
+        api.get('/teachers'),
+        api.get('/subjects'),
       ]);
       setTeachers(teachersRes.data);
       setSubjects(subjectsRes.data);
@@ -47,10 +46,10 @@ const TeachersManagement = () => {
 
     try {
       if (editMode) {
-        await axios.put(`${API}/teachers/${currentTeacher.id}`, formData);
+        await api.put(`/teachers/${currentTeacher.id}`, formData);
         toast.success('Teacher updated successfully!');
       } else {
-        await axios.post(`${API}/teachers`, formData);
+        await api.post('/teachers', formData);
         toast.success('Teacher created successfully!');
       }
 
@@ -65,7 +64,7 @@ const TeachersManagement = () => {
     if (!window.confirm('Are you sure you want to delete this teacher?')) return;
 
     try {
-      await axios.delete(`${API}/teachers/${id}`);
+      await api.delete(`/teachers/${id}`);
       toast.success('Teacher deleted successfully!');
       fetchData();
     } catch (error) {

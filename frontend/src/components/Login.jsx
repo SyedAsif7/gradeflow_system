@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
-import { API } from '../App';
+import { api } from '../lib/apiClient';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -18,13 +17,18 @@ const Login = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API}/auth/login`, {
+      const response = await api.post('/auth/login', {
         email,
         password,
       });
 
+      const { user, token } = response.data;
+
       toast.success('Login successful!');
-      onLogin(response.data.user);
+      if (token) {
+        localStorage.setItem('token', token);
+      }
+      onLogin(user);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Login failed. Please check your credentials.');
     } finally {
@@ -44,7 +48,7 @@ const Login = ({ onLogin }) => {
             </div>
           </div>
           <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            Exam Management System
+            GradeFlow System
           </CardTitle>
           <CardDescription className="text-center text-base">
             Sign in to access your dashboard
@@ -91,15 +95,6 @@ const Login = ({ onLogin }) => {
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-          
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-            <p className="text-xs font-medium text-blue-900 mb-2">Demo Credentials:</p>
-            <div className="space-y-1 text-xs text-blue-700">
-              <p><span className="font-semibold">Admin:</span> admin@school.com / admin123</p>
-              <p><span className="font-semibold">Teacher:</span> teacher@school.com / teacher123</p>
-              <p><span className="font-semibold">Student:</span> student@school.com / student123</p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

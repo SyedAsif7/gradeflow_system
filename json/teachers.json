@@ -1,0 +1,101 @@
+//SY-CSE (Second Year) — Subjects + Teachers JSON
+{
+  "SY-CSE": {
+    "subjects": {
+      "EM-III": {
+        "name": "Engineering Mathematics – III",
+        "faculty": "Prof. Chidrawar A.A. (CAA)"
+      },
+      "DM": {
+        "name": "Discrete Mathematics",
+        "faculty": "Prof. Devkar R.S. (DRS)"
+      },
+      "DS": {
+        "name": "Data Structures",
+        "faculty": "Prof. Bais P.G. (BPG)"
+      },
+      "OOP": {
+        "name": "Object Oriented Programming",
+        "faculty": "Prof. Late A.G. (LAG)"
+      },
+      "OE-I": {
+        "name": "Developing Soft Skills & Dev.",
+        "faculty": "Prof. Lohat A.A. (LAA)"
+      },
+      "MDM": {
+        "name": "Analog and Digital Electronics",
+        "faculty": "Prof. Shriramwar S.D. (SSD)"
+      },
+      "CSM": {
+        "name": "Life of Ch. Shivaji Maharaj",
+        "faculty": "Prof. Shinde B.R. (SBR)"
+      },
+      "UHV-II": {
+        "name": "Universal Human Values – II",
+        "faculty": "Prof. Kalyankar S.B. (KSB)"
+      },
+      "DE": {
+        "name": "Digital Electronics",
+        "faculty": "Prof. Shriramwar S.D. (SSD)"
+      }
+    }
+  }
+}
+
+
+//TY-CSE (Third Year) — Subjects + Teachers JSON
+{
+  "TY-CSE": {
+    "subjects": {
+      "DBS": {
+        "name": "Database Systems",
+        "faculty": "Prof. Magar A.R. (MAR)"
+      },
+      "TOC": {
+        "name": "Theory of Computation",
+        "faculty": "Prof. Devkar R.S. (DRS)"
+      },
+      "SE": {
+        "name": "Software Engineering",
+        "faculty": "Prof. Pawar V.K. (PVK)"
+      },
+      "EL-II": {
+        "name": "Human Computer Interaction",
+        "faculty": "Prof. Jadhav P.K. (JPK)"
+      },
+      "EL-III": {
+        "name": "Business Communication",
+        "faculty": "Prof. Jadhav S.M. (JSM)"
+      }
+    }
+  }
+}
+
+
+//B.Tech-CSE (Final Year) — Subjects + Teachers JSON
+{
+  "BTech-CSE": {
+    "subjects": {
+      "AI": {
+        "name": "Artificial Intelligence",
+        "faculty": "Prof. Late A.G. (LAG)"
+      },
+      "CC": {
+        "name": "Cloud Computing",
+        "faculty": "Prof. Jadhav P.K. (JPK)"
+      },
+      "EL-VI": {
+        "name": "Elective – VI (BDA)",
+        "faculty": "Prof. Shelke S.B. (SSB)"
+      },
+      "EL-VII": {
+        "name": "Elective – VII (BCT)",
+        "faculty": "Prof. Jadhav S.M. (JSM)"
+      },
+      "EL-VIII": {
+        "name": "Elective – VIII (DL)",
+        "faculty": "Prof. Bais P.G. (BPG)"
+      }
+    }
+  }
+}

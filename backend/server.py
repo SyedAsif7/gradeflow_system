@@ -1,17 +1,21 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Depends
+from fastapi.responses import FileResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import bcrypt
 import shutil
+import jwt
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from bson import ObjectId
+from gridfs import NoFile
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -20,6 +24,9 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# GridFS bucket for answer sheets
+fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="answer_sheets")
 
 # Create upload directory
 UPLOAD_DIR = ROOT_DIR / 'uploads' / 'answer_sheets'
@@ -30,6 +37,46 @@ app = FastAPI()
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
+
+# JWT configuration
+JWT_SECRET = os.environ.get("JWT_SECRET", "change_this_secret")
+JWT_ALGORITHM = "HS256"
+auth_scheme = HTTPBearer()
+
+
+def create_access_token(data: dict, expires_minutes: int = 60 * 24) -> str:
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+    to_encode["exp"] = expire
+    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(auth_scheme),
+):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await db.users.find_one({"email": email}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def require_role(*roles: str):
+    async def _dep(current_user=Depends(get_current_user)):
+        if current_user["role"] not in roles:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return current_user
+
+    return _dep
 
 # Models
 class User(BaseModel):
@@ -57,6 +104,9 @@ class Student(BaseModel):
     email: str
     roll_number: str
     class_name: str
+    prn: Optional[int] = None
+    semester: Optional[str] = None
+    academic_year: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 class StudentCreate(BaseModel):
@@ -64,6 +114,9 @@ class StudentCreate(BaseModel):
     email: str
     roll_number: str
     class_name: str
+    prn: Optional[int] = None
+    semester: Optional[str] = None
+    academic_year: Optional[str] = None
     password: str
 
 class Teacher(BaseModel):
@@ -167,12 +220,26 @@ async def register(user_data: UserCreate):
 
 @api_router.post("/auth/login")
 async def login(login_data: LoginRequest):
-    user = await db.users.find_one({"email": login_data.email}, {"_id": 0})
-    if not user or not verify_password(login_data.password, user['password_hash']):
+    try:
+        user = await db.users.find_one({"email": login_data.email}, {"_id": 0})
+    except Exception as e:
+        logger.error(f"MongoDB connection error: {str(e)}")
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Database connection error: {str(e)}. Please check MongoDB connection."
+        )
+    
+    if not user:
+        logger.warning(f"Login attempt with non-existent email: {login_data.email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
+    if not verify_password(login_data.password, user['password_hash']):
+        logger.warning(f"Login attempt with wrong password for email: {login_data.email}")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
     user.pop('password_hash', None)
-    return {"user": user, "message": "Login successful"}
+    token = create_access_token({"sub": user["email"], "role": user["role"]})
+    return {"user": user, "token": token, "message": "Login successful"}
 
 # Student routes
 @api_router.post("/students", response_model=Student)
@@ -183,6 +250,13 @@ async def create_student(student_data: StudentCreate):
     
     student_dict = student_data.model_dump()
     password = student_dict.pop('password')
+    
+    # Convert prn to int if provided
+    if 'prn' in student_dict and student_dict['prn']:
+        try:
+            student_dict['prn'] = int(student_dict['prn'])
+        except (ValueError, TypeError):
+            student_dict['prn'] = None
     
     student_obj = Student(**student_dict)
     doc = student_obj.model_dump()
@@ -201,8 +275,14 @@ async def create_student(student_data: StudentCreate):
     return student_obj
 
 @api_router.get("/students", response_model=List[Student])
-async def get_students():
-    students = await db.students.find({}, {"_id": 0}).to_list(1000)
+async def get_students(class_name: Optional[str] = None, semester: Optional[str] = None):
+    """Get all students, optionally filtered by class_name (SY, TY, BE) or semester"""
+    query = {}
+    if class_name:
+        query["class_name"] = class_name
+    if semester:
+        query["semester"] = semester
+    students = await db.students.find(query, {"_id": 0}).to_list(1000)
     return students
 
 @api_router.get("/students/{student_id}", response_model=Student)
@@ -379,26 +459,29 @@ async def upload_answer_sheet(
     assigned_teacher_id: str = Form(None),
     file: UploadFile = File(...)
 ):
-    if not file.filename.endswith('.pdf'):
+    if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-    
+
     file_id = str(uuid.uuid4())
-    file_ext = Path(file.filename).suffix
-    filename = f"{file_id}{file_ext}"
-    file_path = UPLOAD_DIR / filename
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
+    metadata = {
+        "original_name": file.filename,
+        "content_type": file.content_type or "application/pdf",
+        "exam_id": exam_id,
+        "student_id": student_id,
+        "assigned_teacher_id": assigned_teacher_id,
+    }
+
+    gridfs_id = await fs_bucket.upload_from_stream(file_id, file.file, metadata=metadata)
+
     answer_sheet = AnswerSheet(
         exam_id=exam_id,
         student_id=student_id,
-        pdf_filename=filename,
-        assigned_teacher_id=assigned_teacher_id
+        pdf_filename=str(gridfs_id),
+        assigned_teacher_id=assigned_teacher_id,
     )
     doc = answer_sheet.model_dump()
     await db.answer_sheets.insert_one(doc)
-    
+
     return answer_sheet
 
 @api_router.get("/answer-sheets", response_model=List[AnswerSheet])
@@ -424,12 +507,26 @@ async def download_answer_sheet(sheet_id: str):
     sheet = await db.answer_sheets.find_one({"id": sheet_id}, {"_id": 0})
     if not sheet:
         raise HTTPException(status_code=404, detail="Answer sheet not found")
-    
-    file_path = UPLOAD_DIR / sheet['pdf_filename']
-    if not file_path.exists():
+
+    try:
+        file_obj = await fs_bucket.open_download_stream(ObjectId(sheet["pdf_filename"]))
+    except (NoFile, Exception):
         raise HTTPException(status_code=404, detail="File not found")
-    
-    return FileResponse(file_path, media_type='application/pdf', filename=sheet['pdf_filename'])
+
+    async def file_iterator():
+        while True:
+            chunk = await file_obj.read(1024 * 1024)
+            if not chunk:
+                break
+            yield chunk
+
+    filename = file_obj.metadata.get("original_name") if file_obj.metadata else "answer_sheet.pdf"
+
+    return StreamingResponse(
+        file_iterator(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 @api_router.put("/answer-sheets/{sheet_id}/assign")
 async def assign_answer_sheet(sheet_id: str, teacher_id: str = Form(...)):
@@ -471,11 +568,13 @@ async def delete_answer_sheet(sheet_id: str):
     sheet = await db.answer_sheets.find_one({"id": sheet_id}, {"_id": 0})
     if not sheet:
         raise HTTPException(status_code=404, detail="Answer sheet not found")
-    
-    file_path = UPLOAD_DIR / sheet['pdf_filename']
-    if file_path.exists():
-        file_path.unlink()
-    
+
+    # Try deleting the file from GridFS; ignore if it does not exist
+    try:
+        await fs_bucket.delete(ObjectId(sheet["pdf_filename"]))
+    except Exception:
+        pass
+
     await db.answer_sheets.delete_one({"id": sheet_id})
     return {"message": "Answer sheet deleted successfully"}
 
@@ -633,6 +732,16 @@ async def export_marksheet(exam_id: str):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+# Root endpoint
+@app.get("/")
+async def root():
+    return {
+        "message": "GradeFlow System API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "api_base": "/api"
+    }
 
 # Include the router in the main app
 app.include_router(api_router)

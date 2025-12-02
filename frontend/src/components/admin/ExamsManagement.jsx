@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API } from '../../App';
+import { api } from '../../lib/apiClient';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, FileText } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Download } from 'lucide-react';
 
 const ExamsManagement = () => {
   const [exams, setExams] = useState([]);
@@ -23,6 +22,7 @@ const ExamsManagement = () => {
     date: '',
     total_marks: '',
     class_name: '',
+    questions: [],
   });
 
   useEffect(() => {
@@ -32,8 +32,8 @@ const ExamsManagement = () => {
   const fetchData = async () => {
     try {
       const [examsRes, subjectsRes] = await Promise.all([
-        axios.get(`${API}/exams`),
-        axios.get(`${API}/subjects`),
+        api.get('/exams'),
+        api.get('/subjects'),
       ]);
       setExams(examsRes.data);
       setSubjects(subjectsRes.data);
@@ -50,14 +50,19 @@ const ExamsManagement = () => {
     try {
       const submitData = {
         ...formData,
-        total_marks: parseInt(formData.total_marks),
+        total_marks: formData.questions.reduce((sum, q) => sum + (parseInt(q.max_marks || 0, 10) || 0), 0),
+        questions: formData.questions.map((q, idx) => ({
+          question_number: idx + 1,
+          question_text: q.question_text || `Question ${idx + 1}`,
+          max_marks: parseInt(q.max_marks || 0, 10) || 0,
+        })),
       };
 
       if (editMode) {
-        await axios.put(`${API}/exams/${currentExam.id}`, submitData);
+        await api.put(`/exams/${currentExam.id}`, submitData);
         toast.success('Exam updated successfully!');
       } else {
-        await axios.post(`${API}/exams`, submitData);
+        await api.post('/exams', submitData);
         toast.success('Exam created successfully!');
       }
 
@@ -72,7 +77,7 @@ const ExamsManagement = () => {
     if (!window.confirm('Are you sure you want to delete this exam?')) return;
 
     try {
-      await axios.delete(`${API}/exams/${id}`);
+      await api.delete(`/exams/${id}`);
       toast.success('Exam deleted successfully!');
       fetchData();
     } catch (error) {
@@ -90,6 +95,10 @@ const ExamsManagement = () => {
       date: exam.date,
       total_marks: exam.total_marks.toString(),
       class_name: exam.class_name,
+      questions: (exam.questions || []).map((q) => ({
+        question_text: q.question_text,
+        max_marks: q.max_marks.toString(),
+      })),
     });
     setDialogOpen(true);
   };
@@ -105,12 +114,56 @@ const ExamsManagement = () => {
       date: '',
       total_marks: '',
       class_name: '',
+      questions: [],
     });
   };
 
   const getSubjectName = (subjectId) => {
     const subject = subjects.find((s) => s.id === subjectId);
     return subject ? subject.name : 'Unknown';
+  };
+
+  const handleAddQuestion = () => {
+    setFormData((prev) => ({
+      ...prev,
+      questions: [
+        ...prev.questions,
+        { question_text: '', max_marks: '' },
+      ],
+    }));
+  };
+
+  const handleQuestionChange = (index, field, value) => {
+    setFormData((prev) => {
+      const questions = [...prev.questions];
+      questions[index] = {
+        ...questions[index],
+        [field]: value,
+      };
+      return { ...prev, questions };
+    });
+  };
+
+  const totalFromQuestions = formData.questions.reduce(
+    (sum, q) => sum + (parseInt(q.max_marks || 0, 10) || 0),
+    0,
+  );
+
+  const handleExport = async (exam) => {
+    try {
+      const response = await api.get(`/exams/${exam.id}/export-marksheet`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${exam.name.replace(/\s+/g, '_')}_Marksheet.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      toast.error('Failed to export marksheet');
+    }
   };
 
   return (
@@ -173,8 +226,9 @@ const ExamsManagement = () => {
                     <SelectValue placeholder="Select exam type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Class Test">Class Test</SelectItem>
-                    <SelectItem value="Mid-Sem">Mid-Sem</SelectItem>
+                    <SelectItem value="CA-1">Class Test 1 (CA-1)</SelectItem>
+                    <SelectItem value="CA-2">Class Test 2 (CA-2)</SelectItem>
+                    <SelectItem value="Mid Semester">Mid Semester</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -194,13 +248,39 @@ const ExamsManagement = () => {
                 <Input
                   id="total_marks"
                   type="number"
-                  value={formData.total_marks}
-                  onChange={(e) => setFormData({ ...formData, total_marks: e.target.value })}
-                  required
+                  value={totalFromQuestions}
+                  disabled
                   min="1"
                   placeholder="e.g., 100"
                   data-testid="exam-marks-input"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Questions (Question-wise evaluation)</Label>
+                <div className="space-y-2 max-h-48 overflow-auto border rounded-md p-3">
+                  {formData.questions.map((q, idx) => (
+                    <div key={idx} className="grid grid-cols-6 gap-2 items-center">
+                      <span className="col-span-1 text-sm font-medium">Q{idx + 1}</span>
+                      <Input
+                        className="col-span-3 h-8"
+                        placeholder="Question text"
+                        value={q.question_text}
+                        onChange={(e) => handleQuestionChange(idx, 'question_text', e.target.value)}
+                      />
+                      <Input
+                        className="col-span-2 h-8"
+                        type="number"
+                        min="0"
+                        placeholder="Max marks"
+                        value={q.max_marks}
+                        onChange={(e) => handleQuestionChange(idx, 'max_marks', e.target.value)}
+                      />
+                    </div>
+                  ))}
+                  <Button type="button" size="sm" variant="outline" onClick={handleAddQuestion}>
+                    Add Question
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="class_name">Class</Label>
@@ -257,6 +337,15 @@ const ExamsManagement = () => {
                   <td className="py-3 px-4 text-gray-600">{exam.total_marks}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center space-x-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleExport(exam)}
+                        data-testid={`export-exam-${exam.id}`}
+                      >
+                        <Download className="w-4 h-4 mr-1" />
+                        Export
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"

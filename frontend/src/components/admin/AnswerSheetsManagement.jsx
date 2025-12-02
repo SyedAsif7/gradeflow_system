@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API } from '../../App';
+import { api } from '../../lib/apiClient';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -34,11 +33,11 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
   const fetchData = async () => {
     try {
       const [sheetsRes, studentsRes, teachersRes, examsRes, subjectsRes] = await Promise.all([
-        axios.get(`${API}/answer-sheets`),
-        axios.get(`${API}/students`),
-        axios.get(`${API}/teachers`),
-        axios.get(`${API}/exams`),
-        axios.get(`${API}/subjects`),
+        api.get('/answer-sheets'),
+        api.get('/students'),
+        api.get('/teachers'),
+        api.get('/exams'),
+        api.get('/subjects'),
       ]);
       setAnswerSheets(sheetsRes.data);
       setStudents(studentsRes.data);
@@ -70,7 +69,7 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
       }
       formDataToSend.append('file', formData.file);
 
-      await axios.post(`${API}/answer-sheets/upload`, formDataToSend, {
+      await api.post('/answer-sheets/upload', formDataToSend, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
@@ -90,7 +89,7 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
       const formDataToSend = new FormData();
       formDataToSend.append('teacher_id', teacherId);
 
-      await axios.put(`${API}/answer-sheets/${selectedSheet.id}/assign`, formDataToSend, {
+      await api.put(`/answer-sheets/${selectedSheet.id}/assign`, formDataToSend, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
@@ -108,7 +107,7 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
     if (!window.confirm('Are you sure you want to delete this answer sheet?')) return;
 
     try {
-      await axios.delete(`${API}/answer-sheets/${id}`);
+      await api.delete(`/answer-sheets/${id}`);
       toast.success('Answer sheet deleted successfully!');
       fetchData();
       if (onUpdate) onUpdate();
@@ -119,7 +118,7 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
 
   const handleViewPDF = async (sheetId) => {
     try {
-      const response = await axios.get(`${API}/answer-sheets/${sheetId}/download`, {
+      const response = await api.get(`/answer-sheets/${sheetId}/download`, {
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API } from '../../App';
+import { api } from '../../lib/apiClient';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { toast } from 'sonner';
 import { Plus, Edit, Trash2, BookOpen } from 'lucide-react';
 
@@ -17,6 +17,7 @@ const SubjectsManagement = () => {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
+    class_name: '',
   });
 
   useEffect(() => {
@@ -25,7 +26,7 @@ const SubjectsManagement = () => {
 
   const fetchSubjects = async () => {
     try {
-      const response = await axios.get(`${API}/subjects`);
+      const response = await api.get('/subjects');
       setSubjects(response.data);
     } catch (error) {
       toast.error('Failed to fetch subjects');
@@ -39,10 +40,10 @@ const SubjectsManagement = () => {
 
     try {
       if (editMode) {
-        await axios.put(`${API}/subjects/${currentSubject.id}`, formData);
+        await api.put(`/subjects/${currentSubject.id}`, formData);
         toast.success('Subject updated successfully!');
       } else {
-        await axios.post(`${API}/subjects`, formData);
+        await api.post('/subjects', formData);
         toast.success('Subject created successfully!');
       }
 
@@ -57,7 +58,7 @@ const SubjectsManagement = () => {
     if (!window.confirm('Are you sure you want to delete this subject?')) return;
 
     try {
-      await axios.delete(`${API}/subjects/${id}`);
+      await api.delete(`/subjects/${id}`);
       toast.success('Subject deleted successfully!');
       fetchSubjects();
     } catch (error) {
@@ -71,6 +72,7 @@ const SubjectsManagement = () => {
     setFormData({
       name: subject.name,
       code: subject.code,
+      class_name: subject.class_name || '',
     });
     setDialogOpen(true);
   };
@@ -82,6 +84,7 @@ const SubjectsManagement = () => {
     setFormData({
       name: '',
       code: '',
+      class_name: '',
     });
   };
 
@@ -126,6 +129,23 @@ const SubjectsManagement = () => {
                   data-testid="subject-code-input"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="class_name">Class/Year (Optional)</Label>
+                <Select
+                  value={formData.class_name}
+                  onValueChange={(value) => setFormData({ ...formData, class_name: value })}
+                >
+                  <SelectTrigger id="class_name">
+                    <SelectValue placeholder="Select Year (Optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Years</SelectItem>
+                    <SelectItem value="SY-CSE">Second Year (SY-CSE)</SelectItem>
+                    <SelectItem value="TY-CSE">Third Year (TY-CSE)</SelectItem>
+                    <SelectItem value="BTech-CSE">Final Year (BTech-CSE)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Button type="submit" className="w-full" data-testid="submit-subject-button">
                 {editMode ? 'Update Subject' : 'Create Subject'}
               </Button>
@@ -150,6 +170,7 @@ const SubjectsManagement = () => {
               <tr className="border-b">
                 <th className="text-left py-3 px-4">Subject Name</th>
                 <th className="text-left py-3 px-4">Subject Code</th>
+                <th className="text-left py-3 px-4">Class/Year</th>
                 <th className="text-left py-3 px-4">Actions</th>
               </tr>
             </thead>
@@ -158,6 +179,7 @@ const SubjectsManagement = () => {
                 <tr key={subject.id} className="border-b">
                   <td className="py-3 px-4 font-medium">{subject.name}</td>
                   <td className="py-3 px-4 text-gray-600">{subject.code}</td>
+                  <td className="py-3 px-4 text-gray-600">{subject.class_name || '-'}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center space-x-2">
                       <Button
