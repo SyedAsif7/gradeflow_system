@@ -55,6 +55,7 @@ try:
     sys.path.append(str(Path(__file__).parent.parent))
     
     # Import the actual server implementation
+    # In Vercel environment, this should not fail even if DB connection fails
     from server import api_router
     
     # Include the router
@@ -63,6 +64,8 @@ try:
     logger.info("✅ Routes imported successfully")
 except Exception as e:
     logger.error(f"❌ Failed to import routes: {e}")
-    raise
+    # In Vercel, we don't want to fail the entire app if routes can't be imported
+    # We'll still serve the health endpoints
+    pass
 
 # Vercel looks for the 'app' object

@@ -30,9 +30,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Global variables for database connection
+client = None
+db = None
+fs_bucket = None
+
 # MongoDB connection with better error handling for serverless environments
 def init_db():
     """Initialize database connection with better error handling for serverless"""
+    global client, db, fs_bucket
+    
+    # Return early if already initialized
+    if client and db:
+        return client, db
+    
     try:
         mongo_url = os.environ['MONGO_URL']
         db_name = os.environ['DB_NAME']
@@ -52,29 +63,33 @@ def init_db():
         
         db = client[db_name]
         logger.info("✅ MongoDB connection initialized successfully")
+        
+        # Initialize GridFS bucket
+        fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="answer_sheets")
+        logger.info("✅ GridFS bucket initialized")
+        
         return client, db
     except KeyError as e:
         logger.error(f"❌ Missing required environment variable: {e}")
         raise RuntimeError(f"Missing required environment variable: {e}. Please set MONGO_URL and DB_NAME.")
     except Exception as e:
         logger.error(f"❌ Failed to initialize MongoDB connection: {e}")
-        raise RuntimeError(f"Failed to initialize MongoDB connection: {e}")
+        # Don't raise in serverless environments to prevent cold start failures
+        if os.environ.get('VERCEL'):
+            logger.warning("⚠️  Continuing without database connection in Vercel environment")
+            return None, None
+        else:
+            raise RuntimeError(f"Failed to initialize MongoDB connection: {e}")
 
-# Initialize database connection
-try:
-    client, db = init_db()
-except Exception as e:
-    logger.error(f"Failed to initialize database: {e}")
-    # We'll re-raise this exception to prevent the app from starting with a broken DB
-    raise
-
-# GridFS bucket for answer sheets
-try:
-    fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="answer_sheets")
-    logger.info("✅ GridFS bucket initialized")
-except Exception as e:
-    logger.error(f"❌ Failed to initialize GridFS bucket: {e}")
-    raise
+# Initialize database connection only if not in Vercel environment
+# In Vercel, we'll initialize on first request
+if not os.environ.get('VERCEL'):
+    try:
+        client, db = init_db()
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        # We'll re-raise this exception to prevent the app from starting with a broken DB
+        raise
 
 # Create upload directory
 try:
@@ -103,6 +118,17 @@ def create_access_token(data: dict, expires_minutes: int = 60 * 24) -> str:
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+async def get_db():
+    """Get database connection, initializing if necessary"""
+    global client, db
+    if not db:
+        # Initialize database connection
+        client, db = init_db()
+        if not db:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+    return db
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(auth_scheme),
 ):
@@ -112,6 +138,8 @@ async def get_current_user(
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=401, detail="Invalid token")
+        # Get database connection lazily
+        db = await get_db()
         user = await db.users.find_one({"email": email}, {"_id": 0})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
