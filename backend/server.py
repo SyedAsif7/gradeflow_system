@@ -31,48 +31,89 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# MongoDB connection with better error handling
+# MongoDB connection with better error handling for serverless environments
+def init_db():
+    """Initialize database connection with better error handling for serverless"""
+    try:
+        mongo_url = os.environ['MONGO_URL']
+        db_name = os.environ['DB_NAME']
+        
+        # Log connection info (without exposing credentials)
+        logger.info(f"Initializing MongoDB connection to database: {db_name}")
+        
+        # Create client with settings suitable for serverless
+        client = AsyncIOMotorClient(
+            mongo_url,
+            maxPoolSize=10,
+            minPoolSize=0,
+            maxIdleTimeMS=60000,  # 60 seconds
+            serverSelectionTimeoutMS=5000,  # 5 seconds
+            connectTimeoutMS=5000,  # 5 seconds
+        )
+        
+        db = client[db_name]
+        logger.info("✅ MongoDB connection initialized successfully")
+        return client, db
+    except KeyError as e:
+        logger.error(f"❌ Missing required environment variable: {e}")
+        raise RuntimeError(f"Missing required environment variable: {e}. Please set MONGO_URL and DB_NAME.")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize MongoDB connection: {e}")
+        raise RuntimeError(f"Failed to initialize MongoDB connection: {e}")
+
+# Initialize database connection
 try:
-    mongo_url = os.environ['MONGO_URL']
-    db_name = os.environ['DB_NAME']
-    
-    # Log connection info (without exposing credentials)
-    logger.info(f"Connecting to MongoDB database: {db_name}")
-    client = AsyncIOMotorClient(mongo_url)
-    db = client[db_name]
-except KeyError as e:
-    logger.error(f"Missing required environment variable: {e}")
-    raise RuntimeError(f"Missing required environment variable: {e}. Please set MONGO_URL and DB_NAME.")
+    client, db = init_db()
 except Exception as e:
-    logger.error(f"Failed to connect to MongoDB: {e}")
-    raise RuntimeError(f"Failed to connect to MongoDB: {e}")
+    logger.error(f"Failed to initialize database: {e}")
+    # We'll re-raise this exception to prevent the app from starting with a broken DB
+    raise
 
 # GridFS bucket for answer sheets
-fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="answer_sheets")
+try:
+    fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="answer_sheets")
+    logger.info("✅ GridFS bucket initialized")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize GridFS bucket: {e}")
+    raise
 
 # Create upload directory
-UPLOAD_DIR = ROOT_DIR / 'uploads' / 'answer_sheets'
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    UPLOAD_DIR = ROOT_DIR / 'uploads' / 'answer_sheets'
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"✅ Upload directory ready: {UPLOAD_DIR}")
+except Exception as e:
+    logger.error(f"❌ Failed to create upload directory: {e}")
+    raise
 
 # Create the main app without a prefix
-app = FastAPI()
+app = FastAPI(
+    title="Exam Management System API",
+    description="API for managing exams, answer sheets, and grading",
+    version="1.0.0"
+)
 
 # Add CORS middleware FIRST - before any routes or routers
 # This ensures CORS headers are added to all responses, including error responses
-cors_origins = os.environ.get('CORS_ORIGINS', '*')
-if cors_origins == '*':
-    allow_origins = ['*']
-else:
-    allow_origins = [origin.strip() for origin in cors_origins.split(',')]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=allow_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition", "Content-Type"],
-)
+try:
+    cors_origins = os.environ.get('CORS_ORIGINS', '*')
+    if cors_origins == '*':
+        allow_origins = ['*']
+    else:
+        allow_origins = [origin.strip() for origin in cors_origins.split(',')]
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_credentials=True,
+        allow_origins=allow_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["Content-Disposition", "Content-Type"],
+    )
+    logger.info("✅ CORS middleware added")
+except Exception as e:
+    logger.error(f"❌ Failed to add CORS middleware: {e}")
+    raise
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -81,6 +122,8 @@ api_router = APIRouter(prefix="/api")
 JWT_SECRET = os.environ.get("JWT_SECRET", "change_this_secret")
 JWT_ALGORITHM = "HS256"
 auth_scheme = HTTPBearer()
+
+logger.info("✅ Server initialization completed successfully")
 
 
 def create_access_token(data: dict, expires_minutes: int = 60 * 24) -> str:
