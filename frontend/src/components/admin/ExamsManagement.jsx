@@ -8,6 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import { Plus, Edit, Trash2, FileText, Download } from 'lucide-react';
 
+const EXAM_TYPES = [
+  { value: 'CA-1', label: 'Class Test 1 (CA-1)' },
+  { value: 'CA-2', label: 'Class Test 2 (CA-2)' },
+  { value: 'Mid Semester', label: 'Mid Semester' },
+];
+
+// Fixed total marks per exam type
+const EXAM_MARKS = {
+  'CA-1': 10,
+  'CA-2': 10,
+  'Mid Semester': 20,
+};
+
 const ExamsManagement = () => {
   const [exams, setExams] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -16,7 +29,6 @@ const ExamsManagement = () => {
   const [editMode, setEditMode] = useState(false);
   const [currentExam, setCurrentExam] = useState(null);
   const [formData, setFormData] = useState({
-    name: '',
     subject_id: '',
     exam_type: '',
     date: '',
@@ -48,9 +60,11 @@ const ExamsManagement = () => {
     e.preventDefault();
 
     try {
+      const totalFromQuestionsLocal = formData.questions.reduce((sum, q) => sum + (parseInt(q.max_marks || 0, 10) || 0), 0);
+      const fixedTotal = EXAM_MARKS[formData.exam_type] ?? totalFromQuestionsLocal;
       const submitData = {
         ...formData,
-        total_marks: formData.questions.reduce((sum, q) => sum + (parseInt(q.max_marks || 0, 10) || 0), 0),
+        total_marks: fixedTotal,
         questions: formData.questions.map((q, idx) => ({
           question_number: idx + 1,
           question_text: q.question_text || `Question ${idx + 1}`,
@@ -89,7 +103,6 @@ const ExamsManagement = () => {
     setEditMode(true);
     setCurrentExam(exam);
     setFormData({
-      name: exam.name,
       subject_id: exam.subject_id,
       exam_type: exam.exam_type,
       date: exam.date,
@@ -108,7 +121,6 @@ const ExamsManagement = () => {
     setEditMode(false);
     setCurrentExam(null);
     setFormData({
-      name: '',
       subject_id: '',
       exam_type: '',
       date: '',
@@ -148,21 +160,49 @@ const ExamsManagement = () => {
     (sum, q) => sum + (parseInt(q.max_marks || 0, 10) || 0),
     0,
   );
+  const displayTotalMarks = EXAM_MARKS[formData.exam_type] ?? totalFromQuestions;
 
   const handleExport = async (exam) => {
     try {
+      // Show loading toast
+      const toastId = toast.loading('Generating Excel report...');
+      
       const response = await api.get(`/exams/${exam.id}/export-marksheet`, {
         responseType: 'blob',
       });
+      
+      // Extract filename from Content-Disposition header
+      const disposition = response.headers['content-disposition'] || '';
+      let filename = 'Marksheet.xlsx';
+      const match = /filename="?([^";]+)"?/i.exec(disposition);
+      if (match && match[1]) {
+        filename = match[1];
+      } else {
+        // Fallback filename
+        const subjectName = getSubjectName(exam.subject_id);
+        filename = `${subjectName.replace(/\s+/g, '_')}_${exam.exam_type.replace(/\s+/g, '_')}_Marksheet.xlsx`;
+      }
+      
+      // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${exam.name.replace(/\s+/g, '_')}_Marksheet.xlsx`);
+      link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
       link.remove();
+      
+      // Revoke the blob URL to free memory
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Marksheet exported successfully!', { id: toastId });
     } catch (error) {
-      toast.error('Failed to export marksheet');
+      console.error('Export error:', error);
+      toast.error(
+        error.response?.data?.detail || 
+        error.message || 
+        'Export failed. Please try again.'
+      );
     }
   };
 
@@ -186,17 +226,6 @@ const ExamsManagement = () => {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Exam Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  placeholder="e.g., Mathematics Mid-Sem 2025"
-                  data-testid="exam-name-input"
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="subject">Subject</Label>
                 <Select
                   value={formData.subject_id}
@@ -207,11 +236,13 @@ const ExamsManagement = () => {
                     <SelectValue placeholder="Select subject" />
                   </SelectTrigger>
                   <SelectContent>
-                    {subjects.map((subject) => (
-                      <SelectItem key={subject.id} value={subject.id}>
-                        {subject.name} ({subject.code})
-                      </SelectItem>
-                    ))}
+                    {subjects
+                      .filter((subject) => subject.id && subject.id.trim() !== '')
+                      .map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name} ({subject.code})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -226,9 +257,11 @@ const ExamsManagement = () => {
                     <SelectValue placeholder="Select exam type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CA-1">Class Test 1 (CA-1)</SelectItem>
-                    <SelectItem value="CA-2">Class Test 2 (CA-2)</SelectItem>
-                    <SelectItem value="Mid Semester">Mid Semester</SelectItem>
+                    {EXAM_TYPES.map((examType) => (
+                      <SelectItem key={examType.value} value={examType.value}>
+                        {examType.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -248,7 +281,7 @@ const ExamsManagement = () => {
                 <Input
                   id="total_marks"
                   type="number"
-                  value={totalFromQuestions}
+                  value={displayTotalMarks}
                   disabled
                   min="1"
                   placeholder="e.g., 100"
@@ -315,9 +348,8 @@ const ExamsManagement = () => {
           <table className="w-full">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-3 px-4">Exam Name</th>
                 <th className="text-left py-3 px-4">Subject</th>
-                <th className="text-left py-3 px-4">Type</th>
+                <th className="text-left py-3 px-4">Exam Type</th>
                 <th className="text-left py-3 px-4">Class</th>
                 <th className="text-left py-3 px-4">Date</th>
                 <th className="text-left py-3 px-4">Total Marks</th>
@@ -327,8 +359,7 @@ const ExamsManagement = () => {
             <tbody>
               {exams.map((exam) => (
                 <tr key={exam.id} className="border-b">
-                  <td className="py-3 px-4 font-medium">{exam.name}</td>
-                  <td className="py-3 px-4 text-gray-600">{getSubjectName(exam.subject_id)}</td>
+                  <td className="py-3 px-4 font-medium">{getSubjectName(exam.subject_id)}</td>
                   <td className="py-3 px-4">
                     <span className="badge badge-info">{exam.exam_type}</span>
                   </td>

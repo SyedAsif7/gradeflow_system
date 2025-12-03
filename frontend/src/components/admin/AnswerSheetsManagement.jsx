@@ -6,7 +6,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { toast } from 'sonner';
-import { Plus, Trash2, Upload, Eye, UserCheck } from 'lucide-react';
+import { Plus, Trash2, Upload, Eye, UserCheck, Download, Filter } from 'lucide-react';
 
 const AnswerSheetsManagement = ({ onUpdate }) => {
   const [answerSheets, setAnswerSheets] = useState([]);
@@ -19,6 +19,8 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedSheet, setSelectedSheet] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportYear, setExportYear] = useState('all');
   const [formData, setFormData] = useState({
     exam_id: '',
     student_id: '',
@@ -145,7 +147,9 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
 
   const getExamName = (examId) => {
     const exam = exams.find((e) => e.id === examId);
-    return exam ? exam.name : 'Unknown';
+    if (!exam) return 'Unknown';
+    const subject = subjects.find((s) => s.id === exam.subject_id);
+    return subject ? `${subject.name} - ${exam.exam_type}` : exam.exam_type;
   };
 
   const getTeacherName = (teacherId) => {
@@ -154,10 +158,59 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
     return teacher ? teacher.name : 'Unknown';
   };
 
+  const handleExportSubjectResults = async () => {
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      if (exportYear && exportYear !== 'all') {
+        params.append('class_name', exportYear);
+      }
+      const response = await api.get(`/admin/export-subject-results${params.toString() ? `?${params.toString()}` : ''}`, {
+        responseType: 'blob',
+      });
+      const disposition = response.headers['content-disposition'] || '';
+      let filename = 'Subject_Wise_Teacher_Results.xlsx';
+      const match = /filename="?([^";]+)"?/i.exec(disposition);
+      if (match && match[1]) filename = match[1];
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('Exported subject-wise results');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">Answer Sheets Management</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold">Answer Sheets Management</h2>
+          <span className="text-sm text-gray-500">({answerSheets.length} sheets)</span>
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <Select value={exportYear} onValueChange={setExportYear}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Filter by Year" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Years</SelectItem>
+                <SelectItem value="SY">Second Year (SY)</SelectItem>
+                <SelectItem value="TY">Third Year (TY)</SelectItem>
+                <SelectItem value="BE">Final Year (BE)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" onClick={handleExportSubjectResults} disabled={exporting} title="Export subject-wise teacher results">
+              <Download className="w-4 h-4 mr-2" /> Export Excel
+            </Button>
+          </div>
+        </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="upload-answer-sheet-button">
@@ -182,11 +235,14 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
                     <SelectValue placeholder="Select exam" />
                   </SelectTrigger>
                   <SelectContent>
-                    {exams.map((exam) => (
-                      <SelectItem key={exam.id} value={exam.id}>
-                        {exam.name} ({exam.exam_type})
-                      </SelectItem>
-                    ))}
+                    {exams.map((exam) => {
+                      const subject = subjects.find((s) => s.id === exam.subject_id);
+                      return (
+                        <SelectItem key={exam.id} value={exam.id}>
+                          {subject ? subject.name : 'Unknown'} - {exam.exam_type}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -247,8 +303,9 @@ const AnswerSheetsManagement = ({ onUpdate }) => {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="flex flex-col items-center justify-center py-12 bg-gray-50 rounded-lg">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+          <p className="text-gray-600">Loading answer sheets...</p>
         </div>
       ) : answerSheets.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg">

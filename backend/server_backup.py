@@ -1007,11 +1007,15 @@ async def export_marksheet(exam_id: str):
     ws['A5'] = f"Class: {exam['class_name']}"
     ws['A6'] = f"Total Marks: {exam['total_marks']}"
     
-    # Column headers - Simplified to only show essential columns
+    # Column headers
     header_row = 8
     headers = ['Roll Number', 'Student Name', 'Email', 'Marks Obtained', 'Total Marks', 'Percentage', 'Status']
     
-    # Note: Removed question-wise columns as requested
+    # Add question-wise columns if questions exist
+    questions = exam.get('questions', [])
+    if questions:
+        for q in questions:
+            headers.insert(-3, f"Q{q['question_number']} ({q['max_marks']})")
     
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=header_row, column=col_num, value=header)
@@ -1034,12 +1038,19 @@ async def export_marksheet(exam_id: str):
         ws.cell(row=row_num, column=col, value=student.get("email", "N/A"))
         col += 1
         
-        # Total marks obtained (no individual question marks as requested)
+        # Question-wise marks
+        if questions and sheet.get("question_marks"):
+            question_marks_dict = {qm["question_number"]: qm["marks_obtained"] for qm in sheet["question_marks"]}
+            for q in questions:
+                marks = question_marks_dict.get(q["question_number"], 0)
+                ws.cell(row=row_num, column=col, value=marks)
+                col += 1
+        
+        # Total marks
         marks_obtained = sheet.get("marks_obtained", 0)
         ws.cell(row=row_num, column=col, value=marks_obtained if marks_obtained is not None else "Not Graded")
         col += 1
         
-        # Total marks
         ws.cell(row=row_num, column=col, value=exam["total_marks"])
         col += 1
         

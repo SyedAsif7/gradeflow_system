@@ -42,11 +42,10 @@ const StudentDashboard = ({ user, onLogout }) => {
 
   const getExamDetails = (examId) => {
     const exam = exams.find(e => e.id === examId);
-    if (!exam) return { name: 'Unknown', type: '', totalMarks: 0, subjectName: '' };
+    if (!exam) return { type: '', totalMarks: 0, subjectName: '' };
 
     const subject = subjects.find(s => s.id === exam.subject_id);
     return {
-      name: exam.name,
       type: exam.exam_type,
       totalMarks: exam.total_marks,
       subjectName: subject ? subject.name : 'Unknown',
@@ -191,8 +190,9 @@ const StudentDashboard = ({ user, onLogout }) => {
           </CardHeader>
           <CardContent className="p-6">
             {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
+                <p className="text-gray-600 font-medium">Loading your results...</p>
               </div>
             ) : answerSheets.length === 0 ? (
               <div className="text-center py-12">
@@ -204,9 +204,8 @@ const StudentDashboard = ({ user, onLogout }) => {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-3 px-4">Exam</th>
                       <th className="text-left py-3 px-4">Subject</th>
-                      <th className="text-left py-3 px-4">Type</th>
+                      <th className="text-left py-3 px-4">Exam Type</th>
                       <th className="text-left py-3 px-4">Status</th>
                       <th className="text-left py-3 px-4">Marks</th>
                       <th className="text-left py-3 px-4">Remarks</th>
@@ -217,8 +216,7 @@ const StudentDashboard = ({ user, onLogout }) => {
                       const examDetails = getExamDetails(sheet.exam_id);
                       return (
                         <tr key={sheet.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4 font-medium">{examDetails.name}</td>
-                          <td className="py-3 px-4 text-gray-600">{examDetails.subjectName}</td>
+                          <td className="py-3 px-4 font-medium">{examDetails.subjectName}</td>
                           <td className="py-3 px-4">
                             <span className="badge badge-info">{examDetails.type}</span>
                           </td>

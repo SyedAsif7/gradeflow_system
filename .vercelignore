@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+frontend/build/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/*.so
+backend/.pytest_cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Runtime data
+backend/*.log
+backend/*.pid
+backend/*.seed
+backend/*.pid.lock
+
+# Diagnostic reports
+backend/*.tsbuildinfo
+
+# Misc
+.DS_Store
+*.pem
+backend/uploads/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+
+# Tests
+tests/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Environment files (these should be added as secrets in Vercel)
+backend/.env
+frontend/.env
+
+# Python
+backend/venv/
+backend/env/
+backend/ENV/
+backend/.env
+backend/.python-version
+backend/.coverage
+backend/htmlcov/
+backend/.tox/
+backend/.nox/
+backend/.hypothesis/
+backend/.egg-info/
+backend/dist/
+backend/build/
+backend/*.egg-info/
+backend/*.egg
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS generated files
+Thumbs.db
