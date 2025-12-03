@@ -1,7 +1,6 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 import os
 import logging
@@ -86,35 +85,6 @@ except Exception as e:
     logger.error(f"❌ Failed to create upload directory: {e}")
     raise
 
-# Create the main app without a prefix
-app = FastAPI(
-    title="Exam Management System API",
-    description="API for managing exams, answer sheets, and grading",
-    version="1.0.0"
-)
-
-# Add CORS middleware FIRST - before any routes or routers
-# This ensures CORS headers are added to all responses, including error responses
-try:
-    cors_origins = os.environ.get('CORS_ORIGINS', '*')
-    if cors_origins == '*':
-        allow_origins = ['*']
-    else:
-        allow_origins = [origin.strip() for origin in cors_origins.split(',')]
-    
-    app.add_middleware(
-        CORSMiddleware,
-        allow_credentials=True,
-        allow_origins=allow_origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["Content-Disposition", "Content-Type"],
-    )
-    logger.info("✅ CORS middleware added")
-except Exception as e:
-    logger.error(f"❌ Failed to add CORS middleware: {e}")
-    raise
-
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -123,7 +93,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "change_this_secret")
 JWT_ALGORITHM = "HS256"
 auth_scheme = HTTPBearer()
 
-logger.info("✅ Server initialization completed successfully")
+logger.info("✅ Server router initialization completed successfully")
 
 
 def create_access_token(data: dict, expires_minutes: int = 60 * 24) -> str:
@@ -1271,19 +1241,8 @@ async def export_subject_results(class_name: Optional[str] = None):
         }
     )
 
-# Root endpoint
-@app.get("/")
-async def root():
-    return {
-        "message": "GradeFlow System API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "api_base": "/api"
-    }
+# Export the api_router for use in the Vercel entry point
+# api_router is already defined in the existing code
 
-# Include the router in the main app
-app.include_router(api_router)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+# At the end of the file, make sure api_router is available for import
+__all__ = ['api_router', 'client', 'db', 'fs_bucket']
