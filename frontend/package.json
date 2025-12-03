@@ -6,7 +6,6 @@
   "license": "ISC",
   "author": "",
   "main": "craco.config.js",
-  "homepage": ".",
   "scripts": {
     "start": "craco start",
     "build": "craco build",

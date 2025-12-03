@@ -2,24 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.py",
-      "use": "@vercel/python",
-      "config": {
-        "runtime": "python3.9",
-        "includeFiles": ["**"]
-      }
+      "src": "vercel_entry.py",
+      "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "server.py"
+      "dest": "vercel_entry.py"
     }
-  ],
-  "env": {
-    "MONGO_URL": "@mongo-url",
-    "DB_NAME": "@db-name",
-    "JWT_SECRET": "@jwt-secret",
-    "CORS_ORIGINS": "@cors-origins"
-  }
+  ]
 }

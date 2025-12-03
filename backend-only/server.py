@@ -18,11 +18,7 @@ from bson import ObjectId
 from gridfs import NoFile
 
 ROOT_DIR = Path(__file__).parent
-
-# Load environment variables only in development/local environment
-# In production (like Vercel), environment variables are set in the dashboard
-if not os.environ.get('VERCEL'):
-    load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / '.env')
 
 # Configure logging FIRST (before it's used)
 logging.basicConfig(
@@ -31,21 +27,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# MongoDB connection with better error handling
-try:
-    mongo_url = os.environ['MONGO_URL']
-    db_name = os.environ['DB_NAME']
-    
-    # Log connection info (without exposing credentials)
-    logger.info(f"Connecting to MongoDB database: {db_name}")
-    client = AsyncIOMotorClient(mongo_url)
-    db = client[db_name]
-except KeyError as e:
-    logger.error(f"Missing required environment variable: {e}")
-    raise RuntimeError(f"Missing required environment variable: {e}. Please set MONGO_URL and DB_NAME.")
-except Exception as e:
-    logger.error(f"Failed to connect to MongoDB: {e}")
-    raise RuntimeError(f"Failed to connect to MongoDB: {e}")
+# MongoDB connection
+mongo_url = os.environ['MONGO_URL']
+client = AsyncIOMotorClient(mongo_url)
+db = client[os.environ['DB_NAME']]
 
 # GridFS bucket for answer sheets
 fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="answer_sheets")
