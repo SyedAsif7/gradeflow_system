@@ -168,17 +168,30 @@ Interactive API documentation available at:
 
 ## 🌐 Deployment
 
-Comprehensive deployment guide available in [DEPLOYMENT.md](DEPLOYMENT.md)
+Multiple deployment options available:
 
-### Supported Platforms
+### Frontend Deployment
+- ✅ **Netlify** - [NETLIFY_DEPLOYMENT.md](NETLIFY_DEPLOYMENT.md)
+- ✅ Vercel
+- ✅ AWS Amplify
+- ✅ GitHub Pages
+- ✅ DigitalOcean App Platform
+
+### Backend Deployment
+- ✅ **Railway** - [RAILWAY_RENDER_DEPLOYMENT.md](RAILWAY_RENDER_DEPLOYMENT.md) (Recommended)
+- ✅ **Render** - [RAILWAY_RENDER_DEPLOYMENT.md](RAILWAY_RENDER_DEPLOYMENT.md)
+- ✅ Heroku
+- ✅ AWS (ECS, Lambda)
+- ✅ Google Cloud (Cloud Run)
+- ✅ DigitalOcean App Platform
+
+### Full Stack Deployment
 - ✅ Docker & Docker Compose
-- ✅ Vercel (Frontend)
-- ✅ Railway / Render (Backend)
-- ✅ AWS (ECS, EC2, Lambda)
-- ✅ Google Cloud (App Engine, Cloud Run)
-- ✅ DigitalOcean (App Platform, Droplets)
 - ✅ Kubernetes
+- ✅ Docker Swarm
 - ✅ Self-hosted VPS
+
+**See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive guides on all platforms.**
 
 ## 📊 Database Setup
 
