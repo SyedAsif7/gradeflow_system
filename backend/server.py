@@ -81,25 +81,69 @@ def init_db():
         else:
             raise RuntimeError(f"Failed to initialize MongoDB connection: {e}")
 
+# Function to get database connection with lazy initialization
+def get_db():
+    """Function to get database connection with lazy initialization"""
+    global client, db, fs_bucket
+    if not db:
+        # Initialize database connection
+        client, db = init_db()
+        if not db:
+            # In serverless environments, we might not have a database connection
+            # but we don't want to fail the entire application
+            if os.environ.get('VERCEL'):
+                logger.warning("⚠️  No database connection available in Vercel environment")
+                return None
+            else:
+                raise HTTPException(status_code=503, detail="Database connection not available")
+    return db
+
+# Make db a property that automatically initializes the database connection
+class LazyDB:
+    def __getattr__(self, name):
+        # Get the actual database connection
+        database = get_db()
+        if database is None:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        # Return the requested attribute from the actual database
+        return getattr(database, name)
+
+# Replace the global db variable with our lazy loader
+db = LazyDB()
+
 # Initialize database connection only if not in Vercel environment
 # In Vercel, we'll initialize on first request
 if not os.environ.get('VERCEL'):
     try:
-        client, db = init_db()
+        client, db_actual = init_db()
+        # Update our LazyDB to use the actual database
+        if db_actual:
+            db.__dict__['_actual_db'] = db_actual
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         # We'll re-raise this exception to prevent the app from starting with a broken DB
         raise
 
-# Create upload directory
+# Create upload directory with better error handling for serverless environments
 try:
     UPLOAD_DIR = ROOT_DIR / 'uploads' / 'answer_sheets'
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    logger.info(f"✅ Upload directory ready: {UPLOAD_DIR}")
+    # In Vercel/serverless environments, we might not be able to create directories
+    # So we'll handle this gracefully
+    if not os.environ.get('VERCEL'):
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        logger.info(f"✅ Upload directory ready: {UPLOAD_DIR}")
+    else:
+        logger.info("⚠️  Running in Vercel environment, skipping upload directory creation")
+        # In Vercel, we'll use GridFS for file storage instead of filesystem
+        UPLOAD_DIR = None
 except Exception as e:
     logger.error(f"❌ Failed to create upload directory: {e}")
-    raise
-
+    # In serverless environments, we don't want to fail the entire app for file system issues
+    if os.environ.get('VERCEL'):
+        logger.warning("⚠️  Continuing without upload directory in Vercel environment")
+        UPLOAD_DIR = None
+    else:
+        raise
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -118,17 +162,6 @@ def create_access_token(data: dict, expires_minutes: int = 60 * 24) -> str:
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-async def get_db():
-    """Get database connection, initializing if necessary"""
-    global client, db
-    if not db:
-        # Initialize database connection
-        client, db = init_db()
-        if not db:
-            raise HTTPException(status_code=503, detail="Database connection not available")
-    return db
-
-
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(auth_scheme),
 ):
@@ -139,8 +172,10 @@ async def get_current_user(
         if not email:
             raise HTTPException(status_code=401, detail="Invalid token")
         # Get database connection lazily
-        db = await get_db()
-        user = await db.users.find_one({"email": email}, {"_id": 0})
+        database = get_db()
+        if database is None:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        user = await database.users.find_one({"email": email}, {"_id": 0})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         return user
@@ -148,7 +183,6 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
-
 
 def require_role(*roles: str):
     async def _dep(current_user=Depends(get_current_user)):

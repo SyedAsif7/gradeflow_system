@@ -46,6 +46,8 @@ async def health_check():
     return {"status": "healthy", "message": "API is running correctly"}
 
 # Import all routes after app initialization to avoid circular imports
+# In Vercel, we need to be extra careful about imports that might fail
+api_router = None
 try:
     logger.info("Importing routes...")
     # Import your main server module but don't create another app instance
@@ -55,17 +57,24 @@ try:
     sys.path.append(str(Path(__file__).parent.parent))
     
     # Import the actual server implementation
-    # In Vercel environment, this should not fail even if DB connection fails
-    from server import api_router
-    
-    # Include the router
-    app.include_router(api_router)
-    
-    logger.info("✅ Routes imported successfully")
+    # We'll handle potential import errors gracefully
+    try:
+        from server import api_router
+        # Include the router only if import succeeded
+        if api_router:
+            app.include_router(api_router)
+            logger.info("✅ Routes imported and included successfully")
+        else:
+            logger.warning("⚠️  Routes module imported but no router found")
+    except ImportError as e:
+        logger.error(f"❌ Failed to import routes due to import error: {e}")
+        # Continue without routes - health checks will still work
+    except Exception as e:
+        logger.error(f"❌ Failed to import routes due to unexpected error: {e}")
+        # Continue without routes - health checks will still work
+        
 except Exception as e:
-    logger.error(f"❌ Failed to import routes: {e}")
-    # In Vercel, we don't want to fail the entire app if routes can't be imported
-    # We'll still serve the health endpoints
-    pass
+    logger.error(f"❌ Critical error during route import setup: {e}")
+    # We'll continue anyway to keep health endpoints available
 
 # Vercel looks for the 'app' object
