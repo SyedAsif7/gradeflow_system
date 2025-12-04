@@ -75,12 +75,15 @@ def init_db():
         raise RuntimeError(f"Failed to initialize MongoDB connection: {e}")
 
 # Initialize database connection
+# For Vercel/Serverless: Don't crash on startup if env vars are missing.
+# We will check for db connection in the dependency injection.
 try:
     client, db = init_db()
 except Exception as e:
-    logger.error(f"Failed to initialize database: {e}")
-    # We'll re-raise this exception to prevent the app from starting with a broken DB
-    raise
+    logger.error(f"Failed to initialize database on startup: {e}")
+    # Do not raise here, allow app to start so we can return 503s with helpful messages
+    client = None
+    db = None
 
 # Create upload directory
 try:
@@ -136,9 +139,11 @@ def get_db():
     if db is not None:
         return db
     try:
+        # Try to initialize if not already done (lazy init)
         client, db = init_db()
         return db
-    except Exception:
+    except Exception as e:
+        logger.error(f"Lazy DB init failed: {e}")
         return None
 
 def require_role(*roles: str):
@@ -436,7 +441,11 @@ async def persist_student_mark_to_excel(student: dict, subject: dict, exam: dict
 # Auth routes
 @api_router.post("/auth/register", response_model=User)
 async def register(user_data: UserCreate):
-    existing = await db.users.find_one({"email": user_data.email}, {"_id": 0})
+    database = get_db()
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database not connected. Please check server logs.")
+
+    existing = await database.users.find_one({"email": user_data.email}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -448,18 +457,22 @@ async def register(user_data: UserCreate):
     doc = user_obj.model_dump()
     doc['password_hash'] = hashed_pwd
     
-    await db.users.insert_one(doc)
+    await database.users.insert_one(doc)
     return user_obj
 
 @api_router.post("/auth/login")
 async def login(login_data: LoginRequest):
+    database = get_db()
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database not connected. Please check server logs.")
+
     try:
-        user = await db.users.find_one({"email": login_data.email}, {"_id": 0})
+        user = await database.users.find_one({"email": login_data.email}, {"_id": 0})
     except Exception as e:
-        logger.error(f"MongoDB connection error: {str(e)}")
+        logger.error(f"MongoDB query error: {str(e)}")
         raise HTTPException(
             status_code=503, 
-            detail=f"Database connection error: {str(e)}. Please check MongoDB connection."
+            detail=f"Database error: {str(e)}"
         )
     
     if not user:
