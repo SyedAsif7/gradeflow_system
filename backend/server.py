@@ -18,11 +18,8 @@ from gridfs import NoFile
 
 ROOT_DIR = Path(__file__).parent
 
-# Load environment variables only in development/local environment
-# In production (like Vercel), environment variables are set in the dashboard
-if not os.environ.get('VERCEL'):
-    load_dotenv(ROOT_DIR / '.env')
-
+# Load environment variables
+load_dotenv(ROOT_DIR / '.env')
 # Configure logging FIRST (before it's used)
 logging.basicConfig(
     level=logging.INFO,
@@ -37,7 +34,7 @@ fs_bucket = None
 
 # MongoDB connection with better error handling for serverless environments
 def init_db():
-    """Initialize database connection with better error handling for serverless"""
+    """Initialize database connection with better error handling"""
     global client, db, fs_bucket
     
     # Return early if already initialized
@@ -51,7 +48,7 @@ def init_db():
         # Log connection info (without exposing credentials)
         logger.info(f"Initializing MongoDB connection to database: {db_name}")
         
-        # Create client with settings suitable for serverless
+        # Create client
         client = AsyncIOMotorClient(
             mongo_url,
             maxPoolSize=10,
@@ -74,76 +71,25 @@ def init_db():
         raise RuntimeError(f"Missing required environment variable: {e}. Please set MONGO_URL and DB_NAME.")
     except Exception as e:
         logger.error(f"❌ Failed to initialize MongoDB connection: {e}")
-        # Don't raise in serverless environments to prevent cold start failures
-        if os.environ.get('VERCEL'):
-            logger.warning("⚠️  Continuing without database connection in Vercel environment")
-            return None, None
-        else:
-            raise RuntimeError(f"Failed to initialize MongoDB connection: {e}")
+        raise RuntimeError(f"Failed to initialize MongoDB connection: {e}")
 
-# Function to get database connection with lazy initialization
-def get_db():
-    """Function to get database connection with lazy initialization"""
-    global client, db, fs_bucket
-    if not db:
-        # Initialize database connection
-        client, db = init_db()
-        if not db:
-            # In serverless environments, we might not have a database connection
-            # but we don't want to fail the entire application
-            if os.environ.get('VERCEL'):
-                logger.warning("⚠️  No database connection available in Vercel environment")
-                return None
-            else:
-                raise HTTPException(status_code=503, detail="Database connection not available")
-    return db
+# Initialize database connection
+try:
+    client, db = init_db()
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
+    # We'll re-raise this exception to prevent the app from starting with a broken DB
+    raise
 
-# Make db a property that automatically initializes the database connection
-class LazyDB:
-    def __getattr__(self, name):
-        # Get the actual database connection
-        database = get_db()
-        if database is None:
-            raise HTTPException(status_code=503, detail="Database connection not available")
-        # Return the requested attribute from the actual database
-        return getattr(database, name)
-
-# Replace the global db variable with our lazy loader
-db = LazyDB()
-
-# Initialize database connection only if not in Vercel environment
-# In Vercel, we'll initialize on first request
-if not os.environ.get('VERCEL'):
-    try:
-        client, db_actual = init_db()
-        # Update our LazyDB to use the actual database
-        if db_actual:
-            db.__dict__['_actual_db'] = db_actual
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        # We'll re-raise this exception to prevent the app from starting with a broken DB
-        raise
-
-# Create upload directory with better error handling for serverless environments
+# Create upload directory
 try:
     UPLOAD_DIR = ROOT_DIR / 'uploads' / 'answer_sheets'
-    # In Vercel/serverless environments, we might not be able to create directories
-    # So we'll handle this gracefully
-    if not os.environ.get('VERCEL'):
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        logger.info(f"✅ Upload directory ready: {UPLOAD_DIR}")
-    else:
-        logger.info("⚠️  Running in Vercel environment, skipping upload directory creation")
-        # In Vercel, we'll use GridFS for file storage instead of filesystem
-        UPLOAD_DIR = None
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"✅ Upload directory ready: {UPLOAD_DIR}")
 except Exception as e:
     logger.error(f"❌ Failed to create upload directory: {e}")
-    # In serverless environments, we don't want to fail the entire app for file system issues
-    if os.environ.get('VERCEL'):
-        logger.warning("⚠️  Continuing without upload directory in Vercel environment")
-        UPLOAD_DIR = None
-    else:
-        raise
+    raise
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -1303,7 +1249,6 @@ async def export_subject_results(class_name: Optional[str] = None):
         }
     )
 
-# Export the api_router for use in the Vercel entry point
 # api_router is already defined in the existing code
 
 # At the end of the file, make sure api_router is available for import
