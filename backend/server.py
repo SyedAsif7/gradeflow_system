@@ -86,13 +86,16 @@ except Exception as e:
     db = None
 
 # Create upload directory
+# Note: On Vercel, filesystem is read-only. This will fail but shouldn't crash the app.
+# File uploads will use GridFS instead.
 try:
     UPLOAD_DIR = ROOT_DIR / 'uploads' / 'answer_sheets'
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"✅ Upload directory ready: {UPLOAD_DIR}")
 except Exception as e:
-    logger.error(f"❌ Failed to create upload directory: {e}")
-    raise
+    logger.warning(f"⚠️ Could not create upload directory (expected on Vercel): {e}")
+    # Don't raise - this is expected on serverless platforms
+    UPLOAD_DIR = None
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -135,6 +138,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def get_db():
+    """Get database connection, attempting lazy initialization if needed"""
     global client, db, fs_bucket
     if db is not None:
         return db
@@ -145,6 +149,16 @@ def get_db():
     except Exception as e:
         logger.error(f"Lazy DB init failed: {e}")
         return None
+
+async def get_database():
+    """FastAPI dependency for database access with proper error handling"""
+    database = get_db()
+    if database is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="Database not connected. Please configure MONGO_URL and DB_NAME environment variables in Vercel."
+        )
+    return database
 
 def require_role(*roles: str):
     async def _dep(current_user=Depends(get_current_user)):
@@ -440,11 +454,7 @@ async def persist_student_mark_to_excel(student: dict, subject: dict, exam: dict
 
 # Auth routes
 @api_router.post("/auth/register", response_model=User)
-async def register(user_data: UserCreate):
-    database = get_db()
-    if database is None:
-        raise HTTPException(status_code=503, detail="Database not connected. Please check server logs.")
-
+async def register(user_data: UserCreate, database = Depends(get_database)):
     existing = await database.users.find_one({"email": user_data.email}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -461,11 +471,7 @@ async def register(user_data: UserCreate):
     return user_obj
 
 @api_router.post("/auth/login")
-async def login(login_data: LoginRequest):
-    database = get_db()
-    if database is None:
-        raise HTTPException(status_code=503, detail="Database not connected. Please check server logs.")
-
+async def login(login_data: LoginRequest, database = Depends(get_database)):
     try:
         user = await database.users.find_one({"email": login_data.email}, {"_id": 0})
     except Exception as e:
