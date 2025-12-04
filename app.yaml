@@ -1,0 +1,55 @@
+name: gradeflow_system
+type: web
+
+services:
+  - name: backend
+    github:
+      repo: SyedAsif7/gradeflow_system
+      branch: main
+      deploy_on_push: true
+    build_command: pip install -r requirements.txt
+    run_command: uvicorn server:app --host 0.0.0.0 --port 8080
+    source_dir: backend
+    http:
+      routes:
+        - path: /api
+    envs:
+      - key: MONGO_URL
+        value: ${MONGO_URL}
+      - key: DB_NAME
+        value: gradeflow_db
+      - key: JWT_SECRET
+        value: ${JWT_SECRET}
+      - key: ENVIRONMENT
+        value: production
+
+  - name: frontend
+    github:
+      repo: SyedAsif7/gradeflow_system
+      branch: main
+      deploy_on_push: true
+    build_command: yarn install && yarn build
+    source_dir: frontend
+    http:
+      routes:
+        - path: /
+      domains:
+            - your-domain.com
+    envs:
+      - key: REACT_APP_BACKEND_URL
+        value: https://api.your-domain.com
+
+  - name: mongo
+    image:
+      registry: docker
+      repository: mongo
+      tag: "7.0"
+    http:
+      disabled: true
+
+databases:
+  - name: mongodb
+    engine: mongodb
+    version: "7.0"
+
+static_sites: []

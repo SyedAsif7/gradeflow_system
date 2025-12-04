@@ -1,0 +1,93 @@
+version: '3.8'
+
+# Production Docker Compose Configuration
+# For use with cloud deployments (AWS, Google Cloud, DigitalOcean, etc.)
+# Note: MongoDB should be managed separately (MongoDB Atlas recommended)
+
+services:
+  # FastAPI Backend (Production)
+  backend:
+    image: your-registry/gradeflow-backend:latest
+    container_name: gradeflow-backend-prod
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      # Point to managed MongoDB (Atlas or similar)
+      MONGO_URL: ${MONGO_URL}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - gradeflow-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx Reverse Proxy with SSL
+  nginx:
+    image: nginx:alpine
+    container_name: gradeflow-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # Mount SSL certificates
+      - nginx_cache:/var/cache/nginx
+    networks:
+      - gradeflow-network
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React Frontend (Production)
+  frontend:
+    image: your-registry/gradeflow-frontend:latest
+    container_name: gradeflow-frontend-prod
+    restart: always
+    ports:
+      - "3000:80"
+    environment:
+      REACT_APP_BACKEND_URL: ${FRONTEND_BACKEND_URL:-https://api.your-domain.com}
+      REACT_APP_API_TIMEOUT: 30000
+    networks:
+      - gradeflow-network
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  backend_uploads:
+    driver: local
+  nginx_cache:
+    driver: local
+
+networks:
+  gradeflow-network:
+    driver: bridge
