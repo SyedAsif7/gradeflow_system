@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 import os
@@ -129,6 +130,16 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+def get_db():
+    global client, db, fs_bucket
+    if db is not None:
+        return db
+    try:
+        client, db = init_db()
+        return db
+    except Exception:
+        return None
 
 def require_role(*roles: str):
     async def _dep(current_user=Depends(get_current_user)):
@@ -1249,7 +1260,38 @@ async def export_subject_results(class_name: Optional[str] = None):
         }
     )
 
-# api_router is already defined in the existing code
+app = FastAPI()
 
-# At the end of the file, make sure api_router is available for import
-__all__ = ['api_router', 'client', 'db', 'fs_bucket']
+cors_origins = os.environ.get('CORS_ORIGINS', '*')
+logger.info(f"CORS_ORIGINS config: {cors_origins}")
+if cors_origins == '*':
+    allow_origins = ['*']
+else:
+    allow_origins = [origin.strip() for origin in cors_origins.split(',')]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=allow_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition", "Content-Type"],
+)
+
+@app.get("/")
+async def root():
+    return {
+        "message": "GradeFlow System API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "api_base": "/api",
+    }
+
+app.include_router(api_router)
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    if client:
+        client.close()
+
+__all__ = ['app', 'api_router', 'client', 'db', 'fs_bucket']

@@ -8,8 +8,8 @@ import { Textarea } from './ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { toast } from 'sonner';
 import { 
-  CheckCircle2, XCircle, Minus, Plus, Type, Undo2, Trash2, 
-  Calculator, FileText, X, HelpCircle, ChevronRight, ChevronLeft 
+  CheckCircle2, XCircle, Minus, Plus, Type, Undo2, Redo2, Trash2, 
+  Calculator, FileText, X, HelpCircle, ChevronRight, ChevronLeft, Circle, PenLine, BookOpen 
 } from 'lucide-react';
 import PdfViewer from './PdfViewer';
 
@@ -25,6 +25,7 @@ const EvaluationInterface = ({ sheetId, examId, onClose, onSave }) => {
   const [showTour, setShowTour] = useState(false);
   const [tourStep, setTourStep] = useState(0);
   const [showQuestionPaper, setShowQuestionPaper] = useState(false);
+  const [showModelAnswer, setShowModelAnswer] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showCommentDialog, setShowCommentDialog] = useState(false);
   const [commentPosition, setCommentPosition] = useState(null);
@@ -615,6 +616,94 @@ const EvaluationInterface = ({ sheetId, examId, onClose, onSave }) => {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
+          <div className="w-[150px] p-3">
+            <div className="bg-white rounded-xl shadow-md w-full h-full flex flex-col">
+              <div className="px-3 pt-3 pb-2 border-b">
+                <h3 className="text-sm font-semibold">Annotation</h3>
+              </div>
+              <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+                <div className="space-y-2">
+                  {markButtons.map((m) => (
+                    <button
+                      key={`mark-${m}`}
+                      className="h-9 w-9 rounded-full bg-green-100 text-green-700 font-bold flex items-center justify-center hover:bg-green-200 active:ring-2 active:ring-green-500 mx-auto"
+                      title={`Mark ${m}`}
+                      onClick={() => {
+                        if (!selectedQuestion) {
+                          toast.error('Please select a question first');
+                          return;
+                        }
+                        setDraggedAnnotation({ type: 'numeric', question: selectedQuestion, value: String(m) });
+                        setIsDragging(true);
+                      }}
+                    >
+                      {m === 0.5 ? '½' : m}
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      className="h-9 w-9 rounded-full bg-white shadow ring-1 ring-gray-200 hover:bg-gray-50 flex items-center justify-center"
+                      title="Correct"
+                      onClick={() => handleAnnotationClick('correct')}
+                      disabled={!selectedQuestion}
+                    >
+                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    </button>
+                    <button
+                      className="h-9 w-9 rounded-full bg-white shadow ring-1 ring-gray-200 hover:bg-gray-50 flex items-center justify-center"
+                      title="Incorrect"
+                      onClick={() => handleAnnotationClick('incorrect')}
+                      disabled={!selectedQuestion}
+                    >
+                      <XCircle className="w-5 h-5 text-red-600" />
+                    </button>
+                    <button
+                      className="h-9 w-9 rounded-full bg-white shadow ring-1 ring-gray-200 hover:bg-gray-50 flex items-center justify-center"
+                      title="Circle"
+                      onClick={() => handleAnnotationClick('circle')}
+                      disabled={!selectedQuestion}
+                    >
+                      <Circle className="w-5 h-5 text-blue-600" />
+                    </button>
+                    <button
+                      className="h-9 w-9 rounded-full bg-white shadow ring-1 ring-gray-200 hover:bg-gray-50 flex items-center justify-center"
+                      title="Pen"
+                      onClick={() => handleAnnotationClick('pen')}
+                      disabled={!selectedQuestion}
+                    >
+                      <PenLine className="w-5 h-5 text-gray-700" />
+                    </button>
+                    <button
+                      className="h-9 w-9 rounded-full bg-white shadow ring-1 ring-gray-200 hover:bg-gray-50 flex items-center justify-center"
+                      title="Undo"
+                      onClick={handleUndo}
+                      disabled={history.length === 0}
+                    >
+                      <Undo2 className="w-5 h-5" />
+                    </button>
+                    <button
+                      className="h-9 w-9 rounded-full bg-white shadow ring-1 ring-gray-200 hover:bg-gray-50 flex items-center justify-center"
+                      title="Redo"
+                      onClick={handleRedo}
+                      disabled={redoStack.length === 0}
+                    >
+                      <Redo2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-auto px-3 pb-3 space-y-2">
+                <Button className="w-full bg-purple-600 hover:bg-purple-700" onClick={() => setShowQuestionPaper(true)}>
+                  <FileText className="w-4 h-4 mr-2" /> View Question Paper
+                </Button>
+                <Button className="w-full bg-purple-600 hover:bg-purple-700" onClick={() => setShowModelAnswer(true)}>
+                  <BookOpen className="w-4 h-4 mr-2" /> View Model Answer
+                </Button>
+              </div>
+            </div>
+          </div>
           {/* Left Sidebar - Annotation Tools */}
           <div className="w-64 bg-gray-50 border-r p-4 overflow-y-auto">
             <h3 className="font-semibold mb-3">Annotation</h3>
@@ -1004,6 +1093,24 @@ const EvaluationInterface = ({ sheetId, examId, onClose, onSave }) => {
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+              )}
+              {showModelAnswer && (
+                <div className="space-y-3 mt-2">
+                  {exam.questions?.map(q => (
+                    <Card key={`mav-${q.question_number}`}>
+                      <CardContent className="p-3">
+                        <div className="flex justify-between items-start mb-1">
+                          <h4 className="font-semibold">Model Answer Q{q.question_number}</h4>
+                          <span className="text-xs text-gray-500">{q.max_marks} marks</span>
+                        </div>
+                        <p className="text-xs text-gray-700">Model answer not available</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  <Button variant="outline" className="w-full" onClick={() => setShowModelAnswer(false)}>
+                    Close Model Answer
+                  </Button>
                 </div>
               )}
             </div>

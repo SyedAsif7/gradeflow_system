@@ -39,6 +39,8 @@ const webpackConfig = {
   webpack: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      // Force all imports of 'cookie' to use shim that provides named exports
+      'cookie': path.resolve(__dirname, 'src/shims/cookie.js'),
     },
     configure: (webpackConfig) => {
       // Fix for Node 24 compatibility with react-scripts 5
